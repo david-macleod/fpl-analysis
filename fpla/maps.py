@@ -3,8 +3,13 @@ PLAYER_COLUMNS_RENAME = {
     'element': 'player_id',
     'fixture': 'match_id',
     'opponent_team': 'team_o_id', # N.B. we only have opposition team available here, will get team later from fixtures table 
+    'total_points': 'points', 
     'round': 'gw',
-    'missed_target': 'shots_off_target'
+    'missed_target': 'shots_off_target' 
+}
+
+PLAYER_HISTORY_COLUMNS_RENAME = {
+    'total_points': 'points'
 }
 
 
@@ -25,6 +30,10 @@ USER_COLUMNS_RENAME = {
     'event_transfers': 'gw_transfers',
     'event_transfers_cost': 'gw_transfers_cost',
 }
+
+USER_PICKS_COLUMNS_RENAME = {
+    'element': 'player_id',
+}
    
 
 PLAYER_COLUMNS_DROP = {
@@ -36,6 +45,15 @@ PLAYER_COLUMNS_DROP = {
     'was_home',
     'team_a_score',
     'team_h_score'
+}
+
+
+PLAYER_HISTORY_COLUMNS_DROP = {
+    'ea_index',
+    'ict_index',
+    'id', 
+    'element_code', 
+    'season'
 }
 
 

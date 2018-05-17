@@ -10,7 +10,9 @@ from fpl.user import User
 from fpl.h2h_league import H2HLeague
 from fpl.classic_league import ClassicLeague
 
-from . import maps 
+from . import maps, utils
+
+# N.B. current implementation had a lot of duplication and inefficiencies, needs refactoring 
 
 
 def parse_player_data(player):
@@ -23,6 +25,25 @@ def parse_player_data(player):
     # add player name and position
     df['name'] = full_name(player.first_name, player.second_name)
     df['pos'] = player.position.lower()[0]
+    
+    return df
+   
+ 
+def parse_player_history(player):
+	
+    df = (pd.DataFrame.from_records(player.history_past, exclude=maps.PLAYER_HISTORY_COLUMNS_DROP)
+            .rename(columns=maps.PLAYER_HISTORY_COLUMNS_RENAME))
+    
+    # add player name
+    df['name'] = full_name(player.first_name, player.second_name)
+    
+    # add player_id for current season (that history was taken from) 
+    df['player_id'] = player._id 
+    
+    # season_name is a string e.g. "2016/17", convert this to a number of the start year e.g. 2017
+    df['season'] = df['season_name'].str[:4].astype('int') 
+    # drop now redundant column
+    df.drop(columns=['season_name'], inplace=True)
     
     return df
     
@@ -90,10 +111,9 @@ def parse_user_picks(user):
     
     # parse user pick data for all "finished" gameweeks 
     dfs = (parse_user_picks_gameweek(picks) for picks in user.picks.values() if picks['event']['finished'])
-    df = pd.concat(dfs)
+    df = pd.concat(dfs).rename(columns=maps.USER_PICKS_COLUMNS_RENAME)
     
     df['user_id'] = user.id
-    
     
     return df
 
@@ -103,6 +123,15 @@ def extract_players(**db_kwargs):
     players = FPL().get_players()
     
     df = pd.concat(parse_player_data(player) for player in players)
+    
+    export(df, **db_kwargs)
+    
+    
+def extract_player_history(**db_kwargs):
+
+    players = FPL().get_players()
+    
+    df = pd.concat(parse_player_history(player) for player in players if len(player.history_past) > 0)
     
     export(df, **db_kwargs)
 
@@ -190,6 +219,10 @@ def main(config_path):
             db=db,
             table=player['TABLE']
         )
+        extract_player_history(
+            db=db,
+            table=player['HISTORY_TABLE']
+        )
         
         
     if 'H2H_LEAGUE' in config.keys():
@@ -208,6 +241,7 @@ def main(config_path):
         
     
     if 'CLASSIC_LEAGUE' in config.keys():
+        print('exporting classic league')
         pass 
     
     
