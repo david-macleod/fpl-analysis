@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import sqlite3
-import json
 import pandas as pd
 from pathlib import Path
 from argparse import ArgumentParser
@@ -9,6 +8,7 @@ from fpl.fpl import FPL
 from fpl.user import User
 from fpl.h2h_league import H2HLeague
 from fpl.classic_league import ClassicLeague
+from fpl.gameweek import Gameweek
 
 from . import maps, utils
 
@@ -16,14 +16,14 @@ from . import maps, utils
 
 
 def parse_player_data(player):
-    df = (pd.DataFrame.from_records(player.history, exclude=maps.PLAYER_COLUMNS_DROP)
-            .rename(columns=maps.PLAYER_COLUMNS_RENAME))
+    df = (pd.DataFrame.from_records(player.history, exclude=maps.PLAYER_DROP)
+            .rename(columns=maps.PLAYER_RENAME))
     
      # create unique identifier for individual matches in double gameweeks
     df['gw_match'] = df.groupby('gw').match_id.rank(ascending=False)
     
     # add player name and position
-    df['name'] = full_name(player.first_name, player.second_name)
+    df['player_name'] = full_name(player.first_name, player.second_name)
     df['pos'] = player.position.lower()[0]
     
     return df
@@ -31,11 +31,11 @@ def parse_player_data(player):
  
 def parse_player_history(player):
 	
-    df = (pd.DataFrame.from_records(player.history_past, exclude=maps.PLAYER_HISTORY_COLUMNS_DROP)
-            .rename(columns=maps.PLAYER_HISTORY_COLUMNS_RENAME))
+    df = (pd.DataFrame.from_records(player.history_past, exclude=maps.PLAYER_HISTORY_DROP)
+            .rename(columns=maps.PLAYER_HISTORY_RENAME))
     
     # add player name
-    df['name'] = full_name(player.first_name, player.second_name)
+    df['player_name'] = full_name(player.first_name, player.second_name)
     
     # add player_id for current season (that history was taken from) 
     df['player_id'] = player._id 
@@ -51,45 +51,44 @@ def parse_player_history(player):
 def parse_h2h_league_data(h2h): 
     df = pd.DataFrame.from_records(h2h.fixtures)
 
-    # currently we have one row per "fixture" with with separate columns for "teams 1" and "team 2"
+    # currently we have one row per "fixture" with separate columns for "teams 1" and "team 2"
     # we will instead create a single row per team/fixture combination, which is easier to analyse 
     # we create a "mirror" dataframe by mapping the column names, then concatenate "mirror" and base dataframes
     df_reverse = df.rename(columns=lambda x: x.translate(str.maketrans('12', '21')))
     df = pd.concat([df, df_reverse], axis=0).reset_index(drop=True)
 
-    df.rename(columns=maps.H2H_LEAGUE_COLUMNS_RENAME, inplace=True)
+    df.rename(columns=maps.H2H_LEAGUE_RENAME, inplace=True)
 
     # create result column (outputs 'w','d' or 'l')
-    df['result'] = (df.loc[:, ['entry_1_win', 'entry_1_draw', 'entry_1_loss']].idxmax(axis=1)
-                      .str.split('_').str[-1].str[0].str.lower()) # extract first letter from result
+    df['result'] = df['result'] = df.apply(lambda x: match_result(x['points'], x['points_o']), axis=1)
     
     # set result for "unplayed" gameweeks to '-'
-    df.loc[df[['h2h_points', 'h2h_points_o']].max(axis=1) == 0, 'result'] =  '-'
+    df.loc[(df[['h2h_points', 'h2h_points_o']].max(axis=1) == 0), 'result'] = '-'
 
     # remove excess columns and sort dataframe
-    df = df.loc[:, maps.H2H_LEAGUE_COLUMNS_KEEP].sort_values(['gw', 'name'])
+    df = df.loc[:, maps.H2H_LEAGUE_KEEP].sort_values(['gw', 'user_name'])
 
     # add running points total now that we have sorted the dataframe
-    df['total'] = df.groupby('name').h2h_points.cumsum()
+    df['total'] = df.groupby('user_name').h2h_points.cumsum()
     
     # lower-case names
-    df['name'] = df['name'].str.lower()
-    df['name_o'] = df['name_o'].str.lower()
+    df['user_name'] = df['user_name'].str.lower()
+    df['user_name_o'] = df['user_name_o'].str.lower()
     
     return df
 
 
 def parse_user_data(user):
     
-    df = (pd.DataFrame.from_records(user.history['history'], exclude=maps.USER_COLUMNS_DROP)
-            .rename(columns=maps.USER_COLUMNS_RENAME))
+    df = (pd.DataFrame.from_records(user.history['history'], exclude=maps.USER_DROP)
+            .rename(columns=maps.USER_RENAME))
     
     # create column identifying gameweek each chip was used
     chip_gw_map = {chip['event']: chip['name'] for chip in user.history['chips']}
     df['chip'] = df['gw'].map(chip_gw_map)
     
     # add user name
-    df['name'] = full_name(user.first_name, user.second_name)
+    df['user_name'] = full_name(user.first_name, user.second_name)
     
     return df
 
@@ -97,7 +96,7 @@ def parse_user_data(user):
 def parse_user_picks_gameweek(gameweek_picks):
     
     df = (pd.DataFrame.from_records(gameweek_picks['picks']) 
-            .rename(columns=maps.USER_COLUMNS_RENAME))
+            .rename(columns=maps.USER_RENAME))
     
     # set multiplier to zero for substitutes (unless Bench Boost is active) for easy points total calculations
     df.loc[(df.position > 11) & (gameweek_picks['active_chip'] != 'bboost'), 'multiplier'] = 0
@@ -111,11 +110,43 @@ def parse_user_picks(user):
     
     # parse user pick data for all "finished" gameweeks 
     dfs = (parse_user_picks_gameweek(picks) for picks in user.picks.values() if picks['event']['finished'])
-    df = pd.concat(dfs).rename(columns=maps.USER_PICKS_COLUMNS_RENAME)
+    df = pd.concat(dfs).rename(columns=maps.USER_PICKS_RENAME)
     
+    # add user_id
     df['user_id'] = user.id
     
     return df
+    
+
+def parse_match_data(gameweek):
+    
+    # parse all matches for a single gameweek
+    df = pd.DataFrame.from_records(gameweek.fixtures, exclude=maps.MATCH_DROP)
+    
+    # currently we have one row per "match" with separate columns for "teams h" and "team a"
+    # we will instead create a single row per team/match combination, which is easier to analyse
+    # we create a "mirror" dataframe by mapping the column names, then concatenate "mirror" and base dataframes
+    df_home = df.rename(columns=maps.MATCH_HOME_RENAME).assign(venue='home')
+    df_away = df.rename(columns=maps.MATCH_AWAY_RENAME).assign(venue='away')
+
+    df = pd.concat([df_home, df_away], axis=0).reset_index(drop=True)
+    
+    # convert string to datetime object
+    df['kickoff_time'] = pd.to_datetime(df['kickoff_time'], format='%Y-%m-%dT%H:%M:%SZ')
+    
+    # add team names
+    df['team_name'] = df['team_id'].map(maps.TEAM_ID)
+    df['team_name_o'] = df['team_id_o'].map(maps.TEAM_ID)
+    
+    
+    # add result
+    df['result'] = df.apply(lambda x: match_result(x['score'], x['score_o']), axis=1)
+    
+    df['gw'] = gameweek.id
+    
+    return df
+   
+   
 
 
 def extract_players(**db_kwargs):
@@ -165,6 +196,16 @@ def extract_user_picks(user_ids, **db_kwargs):
     
     export(df, **db_kwargs)
     
+
+def extract_matches(**db_kwargs):
+
+    # get all Gameweek object in full season
+    gameweeks = [Gameweek(gw) for gw in range(1,39)]
+    
+    df = pd.concat(parse_match_data(gameweek) for gameweek in gameweeks)
+    
+    export(df, **db_kwargs)
+    
     
 def export(df, db, table):
     """
@@ -173,7 +214,7 @@ def export(df, db, table):
     :param db: database connection object 
     :param table: output table string
     """
-    # as we are truncating output table, first check that size will not decrease
+    # as we are refreshing output table, first check that size will not decrease
     count = count_records(db, table) 
     new_count = len(df.index)
     assert new_count >= count, "new table is smaller than existing table" 
@@ -202,6 +243,16 @@ def leagues_to_user_ids(leagues):
 def full_name(first_name, last_name):
     """ Concatenate first and last names """
     return ' '.join([first_name, last_name]).lower()
+
+
+def match_result(team_score, team_score_o):
+    """ Return match result ('w','d','l') relative to team """
+    if team_score > team_score_o:
+        return 'w'
+    elif team_score < team_score_o:
+        return 'l'
+    elif team_score == team_score_o:
+        return 'd'
 	
     
 def main(config_path):
@@ -263,11 +314,15 @@ def main(config_path):
         ) 
         
         
-    if 'FIXTURE' in config.keys():
-        print('exporting fixtures')
-        pass
+    if 'MATCH' in config.keys():
+        print('exporting matches')
+        match = config['MATCH'] 
         
-         
+        extract_matches(
+            db=db, 
+            table=match['TABLE']
+        )         
+
     
 if __name__ == '__main__':
     
