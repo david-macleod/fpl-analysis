@@ -15,7 +15,7 @@ def plot_rival_radar(df, colour_dict):
      
     # groupy by player/opponent pairs and calculate proportion of points won
     df = (df.loc[df.result != '-']
-                 .groupby(['name', 'name_o'])
+                 .groupby(['user_name', 'user_name_o'])
                  .apply(lambda x: x['h2h_points'].sum() / (len(x) * 3))
                  .reset_index(name='value'))
     
@@ -27,11 +27,11 @@ def plot_rival_radar(df, colour_dict):
 
     for i, player in zip(range(n_players), players):
         # get points
-        points = df.loc[df.name == player, 'value'].values
+        points = df.loc[df.user_name == player, 'value'].values
         points = np.concatenate((points, [points[0]]))
         
         # get list of opponents for axis label
-        opponents = df.loc[df.name == player, 'name_o'].apply(lambda x: first_name(x)).values
+        opponents = df.loc[df.user_name == player, 'user_name_o'].apply(lambda x: first_name(x)).values
         
         # get angles for polar co-ordinates projection
         angles = np.linspace(0, 2*np.pi, len(opponents), endpoint=False)
@@ -72,7 +72,7 @@ def plot_form(df, colour_dict):
     ax.axhline(color='grey', linewidth='0.5')
 
     for player in players:
-        df_player = df.loc[df.name == player]
+        df_player = df.loc[df.user_name == player]
         gameweeks = np.insert(df_player.gw.values, 0, 0)
         points = np.insert(df_player.mean_total_diff.values, 0, 0)
 
