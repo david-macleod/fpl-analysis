@@ -1,0 +1,53 @@
+{
+  "DB_CONNECTION": "/path/ff.db",
+  "SOURCES": {
+    "PLAYER": {
+      "IDS": [],
+      "GET_METHOD": "get_players", 
+      "OUTPUTS": {
+        "PLAYER": {
+          "PARSE_METHOD": "parse_player", 
+          "TABLE": "fpl_player_2017"
+        }, 
+        "PLAYER_HISTORY": {
+          "PARSE_METHOD": "parse_player_history", 
+          "TABLE": "fpl_player_history_2017"
+        }
+      } 
+    },
+    "GAMEWEEK": {
+      "IDS": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38],
+      "GET_METHOD": "get_gameweeks", 
+      "OUTPUTS": {
+        "MATCH": {
+          "PARSE_METHOD": "parse_match",
+          "TABLE": "fpl_match_2017"
+        }
+      }
+    },
+    "USER": {
+      "IDS": [],
+      "GET_METHOD": "get_users", 
+      "OUTPUTS": {
+        "USER": {
+          "PARSE_METHOD": "parse_user",
+          "TABLE": "fpl_user_2017"
+        },
+        "USER_PICKS": {
+          "PARSE_METHOD": "parse_user_picks",
+          "TABLE": "fpl_user_picks_2017"
+        }
+      }
+    },
+    "H2H_LEAGUE": {
+      "IDS": ["244047"],
+      "GET_METHOD": "get_h2h_leagues", 
+      "OUTPUTS": {
+        "H2H_LEAGUE": {
+          "PARSE_METHOD": "parse_h2h_league",
+          "TABLE": "fpl_h2h_league_2017"
+        }
+      }
+    }
+  }
+}
