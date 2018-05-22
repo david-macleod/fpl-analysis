@@ -2,7 +2,7 @@ PLAYER_RENAME = {
     'clearances_blocks_interceptions': 'cbi',
     'element': 'player_id',
     'fixture': 'match_id',
-    'opponent_team': 'team_o_id', # N.B. we only have opposition team available here, will get team later from fixtures table 
+    'opponent_team': 'team_id_o', # N.B. we only have opposition team available here, will get team later from fixtures table 
     'total_points': 'points', 
     'round': 'gw',
     'missed_target': 'shots_off_target' 
