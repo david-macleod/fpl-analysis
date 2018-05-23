@@ -5,6 +5,7 @@ from pathlib import Path
 from argparse import ArgumentParser
 
 from fpl.fpl import FPL
+from fpl.player import Player
 from fpl.user import User
 from fpl.h2h_league import H2HLeague
 from fpl.classic_league import ClassicLeague
@@ -13,73 +14,100 @@ from fpl.gameweek import Gameweek
 from . import maps, utils
 
 
-class Pipeline(object):
+class FPLSource(object):
+    
+    """ Parent class for sources which is subclassed for each source type """
+	
+    source_type = FPL
+    output_parsers = {}
+	
+    def __init__(self, db_con, ids, output_tables):
+        """ 
+        :param db_con: database connection string
+        :param ids: list of ids used to create FPL objects of `source_type`
+        :param output_tables: dict of {OUTPUT_NAME: output_table} 
+        """
+        self.db_con = db_con
+        self.inputs = self.get_source(ids) 
+        self.output_tables = output_tables
 
-    "Generate sequences of FPL objects, then extract into dataframes and export"
-   
-    def __init__(self, config):
-        self.config = config
-        self.db_connection = sqlite3.connect(self.config['DB_CONNECTION'])
-        # instantiate lists of FPL objects from sources defined in config
-        self.players = self.get_source('PLAYER')
-        self.gameweeks = self.get_source('GAMEWEEK')
-        self.h2h_leagues = self.get_source('H2H_LEAGUE') 
-        self.classic_leagues = self.get_source('CLASSIC_LEAGUE') 
-        self.users = self.get_source('USER') 
-        
-        
-    def get_source(self, source_name):
-        """ Run "get" method for specified source to return a list of FPL objects """
-        if source_name in self.config['SOURCES']:
-            print(f'Loading source {source_name}')
-            get_method = self.config['SOURCES'][source_name]['GET_METHOD']
-            fpl_objects = getattr(self, get_method)()
-            return fpl_objects
-        else:
-            return list()
-     
-    def get_players(self):
-        #TODO create FPL PR which makes returning single players easier, so make this method consistent with other get_ methods 
-        return FPL().get_players()
-        
-    def get_gameweeks(self):
-        gameweek_ids = self.config['SOURCES']['GAMEWEEK']['IDS']
-        return [Gameweek(gameweek_id) for gameweek_id in gameweek_ids]
-        
-    def get_h2h_leagues(self):
-        h2h_league_ids = self.config['SOURCES']['H2H_LEAGUE']['IDS']
-        return [H2HLeague(h2h_league_id) for h2h_league_id in h2h_league_ids]
-    
-    def get_classic_leagues(self):
-        classic_league_ids = self.config['SOURCES']['CLASSIC_LEAGUE']['IDS']
-        return [ClassicLeague(classic_league_id) for classic_league_id in classic_league_ids]
-    
-    def get_users(self):
-        user_ids = set(self.config['SOURCES']['USER']['IDS']) 
-        # add users ids found in "league" objects 
-        leagues = self.h2h_leagues + self.classic_leagues
-        user_ids.update(user['entry'] for league in leagues for user in league.standings)
-        return [User(user_id) for user_id in user_ids]
-        
-    
-    def run_pipeline(self):
-        """ Iterate through available sources, parse objects into DataFrames and export """
-        
-        for source_name, source in self.config['SOURCES'].items():
-            # retrieve inputs for current source 
-            fpl_objects = getattr(self, f'{source_name}s'.lower())
+	
+    def get_source(self, fpl_ids):
+        """ Create list of FPL objects of from passed fpl_ids """
+        return [self.source_type(fpl_id) for fpl_id in fpl_ids] 
             
-            for output_name, output in source['OUTPUTS'].items():
-                print(f'Processing output {output_name}')
-                # parse FPL objects into DataFrame
-                parser = getattr(self, output['PARSE_METHOD'])
-                df = pd.concat(parser(fpl_object) for fpl_object in fpl_objects)
-                
-                # export DataFrame to database
-                self.export(df, table=output['TABLE']) 
-                
-                
+    def process_source(self):
+        """ Parse FPL objects into a DataFrame and export to database """
+        for output_name, table_name in self.output_tables.items():
+            # parse FPL objects into a single DataFrame 
+            parser = self.output_parsers[output_name] 
+            df = pd.concat(parser(fpl_object) for fpl_object in self.inputs)
+            
+            # export DataFrame to database
+            self.export(df=df, table=table_name)
+                     
+    def export(self, df, table):
+        """
+        Export DataFrame to database table
+        :param df: input DataFrame 
+        :param table: output table name
+        """
+        # as we are refreshing output table, first check that size will not decrease
+        count = self.count_records(table) 
+        new_count = len(df.index)
+        assert new_count >= count, "size of new table much exceed or equal existing table" 
+        
+        df.to_sql(table, con=self.db_con, index=False, if_exists='replace')
+     
+    def count_records(self, table):
+        """ Check table exists and count number of records """
+        check_exists_query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
+        count_query = f"SELECT count(*) FROM {table}" 
+    
+        cursor = self.db_con.cursor()
+        if cursor.execute(check_exists_query).fetchone():
+            return cursor.execute(count_query).fetchone()[0]
+        else:
+            return 0
+           
+    @staticmethod 
+    def full_name(first_name, last_name):
+        """ Concatenate first and last names """
+        return ' '.join([first_name, last_name]).lower()
+
+    @staticmethod
+    def match_result(team_score, team_score_o):
+        """ 
+        Return match result relative to team
+        :param team_score: int score of team
+        :param team_score: int score of opposition team 
+        :return: string 'w', 'd' or 'l' 
+        """
+        if team_score > team_score_o:
+            return 'w'
+        elif team_score < team_score_o:
+            return 'l'
+        elif team_score == team_score_o:
+            return 'd'
+            
+            
+class PlayerSource(FPLSource):
+	
+    source_type = Player
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.output_parsers = {
+            'PLAYER': self.parse_player,
+            'PLAYER_HISTORY': self.parse_player_history
+        }
+		
+    def get_source(self, fpl_ids):
+        #TODO create FPL PR which makes returning single players easier, which will make this override obsolete 
+        return FPL().get_players()
+    
     def parse_player(self, player):
+        """ Extract data for a single player """
         df = (pd.DataFrame.from_records(player.history, exclude=maps.PLAYER_DROP)
                 .rename(columns=maps.PLAYER_RENAME))
         
@@ -92,9 +120,8 @@ class Pipeline(object):
         
         return df
    
-     
     def parse_player_history(self, player):
-        
+        """ Extract historical data for a single player """
         # early return empty dataframe if history does not exist (i.e. new player this season)
         if len(player.history_past) == 0:
             return pd.DataFrame()
@@ -114,9 +141,109 @@ class Pipeline(object):
         df.drop(columns=['season_name'], inplace=True)
         
         return df
+       
+        
+
+class GameweekSource(FPLSource):
+	
+    source_type = Gameweek
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.output_parsers = {
+            'MATCH': self.parse_match
+        }
+    
+    def parse_match(self, gameweek):
+        """ Extract data for all matches in a single gameweek """
+        # parse all matches for a single gameweek
+        df = pd.DataFrame.from_records(gameweek.fixtures, exclude=maps.MATCH_DROP)
+        
+        # currently we have one row per "match" with separate columns for "teams h" and "team a"
+        # we will instead create a single row per team/match combination, which is easier to analyse
+        # we create a "mirror" dataframe by mapping the column names, then concatenate "mirror" and base dataframes
+        df_home = df.rename(columns=maps.MATCH_HOME_RENAME).assign(venue='home')
+        df_away = df.rename(columns=maps.MATCH_AWAY_RENAME).assign(venue='away')
+    
+        df = pd.concat([df_home, df_away], axis=0).reset_index(drop=True)
+        
+        # convert string to datetime object
+        df['kickoff_time'] = pd.to_datetime(df['kickoff_time'], format='%Y-%m-%dT%H:%M:%SZ')
+        
+        # add team names
+        df['team_name'] = df['team_id'].map(maps.TEAM_ID)
+        df['team_name_o'] = df['team_id_o'].map(maps.TEAM_ID)
+        
+        # add result
+        df['result'] = df.apply(lambda x: self.match_result(x['score'], x['score_o']), axis=1)
+        
+        df['gw'] = gameweek.id
+        
+        return df
+    
+    
+class UserSource(FPLSource):
+	
+    source_type = User
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.output_parsers = {
+            'USER': self.parse_user,
+            'USER_PICKS': self.parse_user_picks
+        }
+    
+    def parse_user(self, user):
+        """ Extract season data for a single user """
+        df = (pd.DataFrame.from_records(user.history['history'], exclude=maps.USER_DROP)
+                .rename(columns=maps.USER_RENAME))
+        
+        # create column identifying gameweek each chip was used
+        chip_gw_map = {chip['event']: chip['name'] for chip in user.history['chips']}
+        df['chip'] = df['gw'].map(chip_gw_map)
+        
+        # add user name
+        df['user_name'] = self.full_name(user.first_name, user.second_name)        
+   
+        return df
+ 
+    
+    def parse_user_picks_gameweek(self, gameweek_picks):
+        """ Extract user's team 'picks' for a single gamweek """
+        df = (pd.DataFrame.from_records(gameweek_picks['picks']) 
+                .rename(columns=maps.USER_RENAME))
+        
+        # set multiplier to zero for substitutes (unless Bench Boost is active) for easy points total calculations
+        df.loc[(df.position > 11) & (gameweek_picks['active_chip'] != 'bboost'), 'multiplier'] = 0
+    
+        df['gw'] = gameweek_picks['event']['id'] 
+        
+        return df
+           
+    def parse_user_picks(self, user):
+        """ Extract user's team 'picks' for all gameweeks """
+        # exclude gameweeks yet to be played
+        dfs = (self.parse_user_picks_gameweek(picks) for picks in user.picks.values() if picks['event']['finished'])
+        df = pd.concat(dfs).rename(columns=maps.USER_PICKS_RENAME)
+        
+        # add user_id
+        df['user_id'] = user.id
+        
+        return df
         
     
+class H2HLeagueSource(FPLSource):
+	
+    source_type = H2HLeague
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.output_parsers = {
+            'H2H_LEAGUE': self.parse_h2h_league
+        }
+    
     def parse_h2h_league(self, h2h): 
+        """ Extract league fixtures/results for a single H2H league """
         df = pd.DataFrame.from_records(h2h.fixtures)
     
         # currently we have one row per "fixture" with separate columns for "teams 1" and "team 2"
@@ -146,121 +273,51 @@ class Pipeline(object):
         return df
     
     
-    def parse_user(self, user):
-        
-        df = (pd.DataFrame.from_records(user.history['history'], exclude=maps.USER_DROP)
-                .rename(columns=maps.USER_RENAME))
-        
-        # create column identifying gameweek each chip was used
-        chip_gw_map = {chip['event']: chip['name'] for chip in user.history['chips']}
-        df['chip'] = df['gw'].map(chip_gw_map)
-        
-        # add user name
-        df['user_name'] = self.full_name(user.first_name, user.second_name)
-        
-        return df
+class ClassicLeagueSource(FPLSource):
+	
+    source_type = ClassicLeague 
     
     
-    def parse_user_picks_gameweek(self, gameweek_picks):
-        
-        df = (pd.DataFrame.from_records(gameweek_picks['picks']) 
-                .rename(columns=maps.USER_RENAME))
-        
-        # set multiplier to zero for substitutes (unless Bench Boost is active) for easy points total calculations
-        df.loc[(df.position > 11) & (gameweek_picks['active_chip'] != 'bboost'), 'multiplier'] = 0
-    
-        df['gw'] = gameweek_picks['event']['id'] 
-        
-        return df
-    
-         
-    def parse_user_picks(self, user):
-        
-        # parse user pick data for all "finished" gameweeks 
-        dfs = (self.parse_user_picks_gameweek(picks) for picks in user.picks.values() if picks['event']['finished'])
-        df = pd.concat(dfs).rename(columns=maps.USER_PICKS_RENAME)
-        
-        # add user_id
-        df['user_id'] = user.id
-        
-        return df
-        
-    
-    def parse_match(self, gameweek):
-        
-        # parse all matches for a single gameweek
-        df = pd.DataFrame.from_records(gameweek.fixtures, exclude=maps.MATCH_DROP)
-        
-        # currently we have one row per "match" with separate columns for "teams h" and "team a"
-        # we will instead create a single row per team/match combination, which is easier to analyse
-        # we create a "mirror" dataframe by mapping the column names, then concatenate "mirror" and base dataframes
-        df_home = df.rename(columns=maps.MATCH_HOME_RENAME).assign(venue='home')
-        df_away = df.rename(columns=maps.MATCH_AWAY_RENAME).assign(venue='away')
-    
-        df = pd.concat([df_home, df_away], axis=0).reset_index(drop=True)
-        
-        # convert string to datetime object
-        df['kickoff_time'] = pd.to_datetime(df['kickoff_time'], format='%Y-%m-%dT%H:%M:%SZ')
-        
-        # add team names
-        df['team_name'] = df['team_id'].map(maps.TEAM_ID)
-        df['team_name_o'] = df['team_id_o'].map(maps.TEAM_ID)
-        
-        # add result
-        df['result'] = df.apply(lambda x: self.match_result(x['score'], x['score_o']), axis=1)
-        
-        df['gw'] = gameweek.id
-        
-        return df
-    
-    
-    def export(self, df, table):
+class Pipeline(object):
+	
+    """ Generate sequences of FPL objects defined in config, extract into DataFrames and export """
+	
+    source_classes = {
+	    'PLAYER': PlayerSource, 
+	    'GAMEWEEK': GameweekSource, 
+	    'H2H_LEAGUE': H2HLeagueSource, 
+	    'CLASSIC_LEAGUE': ClassicLeagueSource, 
+	    'USER': UserSource
+	 }
+   
+    def __init__(self, config):
         """
-        Export dataframe to database table
-        :param df: input DataFrame 
-        :param table: output table string
+        :param config: config dict (ref. example-config.json)
         """
-        # as we are refreshing output table, first check that size will not decrease
-        count = self.count_records(table) 
-        new_count = len(df.index)
-        assert new_count >= count, "size of new table much exceed or equal existing table" 
+        self.db_con = sqlite3.connect(config['db_connection']) 
+        self.sources = self.get_config_sources(config['sources']) 
         
-        df.to_sql(table, con=self.db_connection, index=False, if_exists='replace')
-    
-    
-    def count_records(self, table):
-        """ Check table exists and count number of records """
-        check_exists_query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
-        count_query = f"SELECT count(*) FROM {table}" 
-    
-        cursor = self.db_connection.cursor()
-        if cursor.execute(check_exists_query).fetchone():
-            return cursor.execute(count_query).fetchone()[0]
-        else:
-            return 0
-        
-        
-    @staticmethod 
-    def full_name(first_name, last_name):
-        """ Concatenate first and last names """
-        return ' '.join([first_name, last_name]).lower()
-
-    @staticmethod
-    def match_result(team_score, team_score_o):
-        """ 
-        Return match result relative to team
-        :param team_score: int score of team
-        :param team_score: int score of opposition team 
-        :return: string 'w', 'd' or 'l' 
+    def get_config_sources(self, config_sources):
         """
-        if team_score > team_score_o:
-            return 'w'
-        elif team_score < team_score_o:
-            return 'l'
-        elif team_score == team_score_o:
-            return 'd'
-       
-       
+        For sources defined in config create list of Source objects
+        :param config_sources: dict of config sources (ref. example-config.json)
+        :returns: list of Source object instances
+        """
+        sources = [] 
+        for source_name, source_class in self.source_classes.items():
+            if source_name in config_sources:
+                print(f'Loading source {source_name}')
+                source_kwargs = config_sources[source_name]
+                source = source_class(db_con=self.db_con, **source_kwargs)
+                sources.append(source)       
+        return sources 
+                
+    def run_pipeline(self):
+        """ Process all sources """
+        for source in self.sources:
+            source.process_source()
+                
+            
     
 if __name__ == '__main__':
     
