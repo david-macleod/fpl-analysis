@@ -1,10 +1,22 @@
+STATUS_NAME = [
+    'x',
+    'player_id',
+    'status_date', 
+    'last_name',
+    'probability', 
+    'status',
+    'news'
+]
+
+
 PLAYER_RENAME = {
     'clearances_blocks_interceptions': 'cbi',
     'element': 'player_id',
     'fixture': 'match_id',
-    'opponent_team': 'team_o_id', # N.B. we only have opposition team available here, will get team later from fixtures table 
+    'opponent_team': 'team_id_o', # N.B. we only have opposition team available here, will get team later from fixtures table 
     'total_points': 'points', 
     'round': 'gw',
+    'goals_scored': 'goals', 
     'missed_target': 'shots_off_target' 
 }
 
@@ -87,7 +99,6 @@ MATCH_DROP = {
     'id',
     'started',
     'event_day',
-    'deadline_time',
     'deadline_time_formatted',
     'stats',
     'code',
@@ -105,6 +116,21 @@ USER_DROP = {
     'id',
     'targets'
 }
+
+
+STATUS_DROP = {
+    'x',
+    'last_name',
+    'status',
+    'probability'
+} 
+
+STATUS_NUMERIC = [
+    'old_prob', 
+    'new_prob', 
+    'player_id'
+] 
+ 
 
 TEAM_ID = {
     1: 'ars',
