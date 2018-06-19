@@ -1,0 +1,40 @@
+{
+  "db_connection": "/home/ubuntu/Dropbox/data/db/ff-model.db",
+  "globals": {
+    "year": 2017
+   }, 
+  "sources": {
+    "PLAYER": {
+      "ids": [],
+      "output_tables": {
+        "PLAYER": "fpl_player", 
+        "PLAYER_HISTORY": "fpl_player_history"
+      }
+    },
+    "GAMEWEEK": {
+      "ids": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38],
+      "output_tables": {
+        "MATCH": "fpl_match"
+      }
+    },
+    "USER": {
+      "ids": [536427, 1407212, 2349783, 664570, 164412, 987199],
+      "output_tables": {
+        "USER": "fpl_user_2017", 
+        "USER_PICKS": "fpl_user_picks" 
+      }
+    },
+    "H2H_LEAGUE": {
+      "ids": [389558],
+      "output_tables": {
+        "H2H_LEAGUE": "fpl_h2h_league"
+      }
+    }, 
+    "STATUS": {
+      "url": "http://www.fplstatistics.co.uk/Home/AjaxEventsSCHandler?sEcho=7&iColumns=7&sColumns=%2CPId%2Cdatetime%2Cweb_name%2CChanceNRChange%2CStatusChange%2CNews&iDisplayStart=0&iDisplayLength=10000&mDataProp_0=0&sSearch_0=&bRegex_0=false&bSearchable_0=true&bSortable_0=false&mDataProp_1=1&sSearch_1=&bRegex_1=false&bSearchable_1=true&bSortable_1=true&mDataProp_2=2&sSearch_2=&bRegex_2=false&bSearchable_2=true&bSortable_2=true&mDataProp_3=3&sSearch_3=&bRegex_3=false&bSearchable_3=true&bSortable_3=true&mDataProp_4=4&sSearch_4=&bRegex_4=false&bSearchable_4=true&bSortable_4=true&mDataProp_5=5&sSearch_5=&bRegex_5=false&bSearchable_5=true&bSortable_5=true&mDataProp_6=6&sSearch_6=&bRegex_6=false&bSearchable_6=true&bSortable_6=true&sSearch=&bRegex=false&iSortCol_0=0&sSortDir_0=desc&iSortingCols=1&_=1527609008156",
+      "output_tables": {
+        "STATUS": "fpl_status"
+      }
+    }
+  }
+}

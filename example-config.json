@@ -1,0 +1,31 @@
+{
+  "db_connection": "insertdbconnectionstring",
+  "sources": {
+    "PLAYER": {
+      "ids": [],
+      "output_tables": {
+        "PLAYER": "fpl_player_2017", 
+        "PLAYER_HISTORY": "fpl_player_history_2017"
+      }
+    },
+    "GAMEWEEK": {
+      "ids": [1,2,3,4],
+      "output_tables": {
+        "MATCH": "fpl_match_2017"
+      }
+    },
+    "USER": {
+      "ids": [],
+      "output_tables": {
+        "USER": "fpl_user_2017", 
+        "USER_PICKS": "fpl_user_picks_2017" 
+      }
+    },
+    "H2H_LEAGUE": {
+      "ids": [],
+      "output_tables": {
+        "H2H_LEAGUE": "fpl_h2h_league_2017"
+      }
+    }
+  }
+}
