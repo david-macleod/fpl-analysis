@@ -1,7 +1,7 @@
 {
   "db_connection": "/home/ubuntu/Dropbox/data/db/ff-model.db",
   "globals": {
-    "year": 2017
+    "year": 2018
    }, 
   "sources": {
     "PLAYER": {
@@ -20,7 +20,7 @@
     "USER": {
       "ids": [536427, 1407212, 2349783, 664570, 164412, 987199],
       "output_tables": {
-        "USER": "fpl_user_2017", 
+        "USER": "fpl_user", 
         "USER_PICKS": "fpl_user_picks" 
       }
     },
