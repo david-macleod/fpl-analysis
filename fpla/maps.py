@@ -137,22 +137,22 @@ TEAM_ID = {
     2: 'bou',
     3: 'bha',
     4: 'bur',
-    5: 'che',
-    6: 'cpl',
-    7: 'eve',
-    8: 'hud',
-    9: 'lei',
-    10: 'liv',
-    11: 'mci',
-    12: 'mun',
-    13: 'new',
-    14: 'sot',
-    15: 'stk',
-    16: 'swa',
+    5: 'car', 
+    6: 'che',
+    7: 'cpl',
+    8: 'ful', 
+    9: 'eve',
+    10: 'hud',
+    11: 'lei',
+    12: 'liv',
+    13: 'mci',
+    14: 'mun',
+    15: 'new',
+    16: 'sot',
     17: 'tot',
     18: 'wat',
-    19: 'wba',
-    20: 'whu'
+    19: 'whu',
+    20: 'wol' 
 }
 
 
@@ -161,10 +161,12 @@ TEAM_NAME = {
     'brighton': 'bha', 
     'bournemouth': 'bou', 
     'burnley': 'bur', 
+    'cardiff': 'car', 
     'chelsea': 'che',
     'crystal palace': 'cpl',
     'palace': 'cpl',
     'everton': 'eve', 
+    'fulham': 'ful', 
     'huddersfield': 'hud',
     'leicester': 'lei', 
     'liverpool': 'liv', 
@@ -181,5 +183,7 @@ TEAM_NAME = {
     'watford': 'wat', 
     'west bromwich albion': 'wba',
     'west brom': 'wba', 
-    'west ham': 'whu' 
+    'west ham': 'whu', 
+    'wolves': 'wol', 
+    'wolverhampton wanderers': 'wol' 
 }
